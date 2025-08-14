@@ -10,6 +10,8 @@ import (
 	"github.com/sagernet/sing/common"
 
 	utls "github.com/metacubex/utls"
+
+	ec "github.com/domaingts/electricity"
 )
 
 func init() {
@@ -18,7 +20,7 @@ func init() {
 		if loaded {
 			return true, uConn.NetConn(), reflect.TypeOf(uConn.Conn).Elem(), uintptr(unsafe.Pointer(uConn.Conn))
 		}
-		tlsConn, loaded := common.Cast[*utls.Conn](conn)
+		tlsConn, loaded := common.Cast[*ec.Conn](conn)
 		if loaded {
 			return true, tlsConn.NetConn(), reflect.TypeOf(tlsConn).Elem(), uintptr(unsafe.Pointer(tlsConn))
 		}
