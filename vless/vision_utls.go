@@ -9,18 +9,19 @@ import (
 
 	N "github.com/sagernet/sing/common/network"
 
-	utls "github.com/metacubex/utls"
+	ec "github.com/domaingts/electricity"
+	"github.com/domaingts/venc"
 )
 
 func init() {
 	tlsRegistry = append(tlsRegistry, func(conn net.Conn) (loaded bool, netConn net.Conn, reflectType reflect.Type, reflectPointer uintptr) {
-		uConn, loaded := N.CastReader[*utls.UConn](conn)
-		if loaded {
-			return true, uConn.NetConn(), reflect.TypeOf(uConn.Conn).Elem(), uintptr(unsafe.Pointer(uConn.Conn))
-		}
-		tlsConn, loaded := N.CastReader[*utls.Conn](conn)
+		tlsConn, loaded := N.CastReader[*ec.Conn](conn)
 		if loaded {
 			return true, tlsConn.NetConn(), reflect.TypeOf(tlsConn).Elem(), uintptr(unsafe.Pointer(tlsConn))
+		}
+		decryptionConn, loaded := N.CastReader[*venc.CommonConn](conn)
+		if loaded {
+			return true, decryptionConn.Conn, reflect.TypeOf(decryptionConn).Elem(), uintptr(unsafe.Pointer(decryptionConn))
 		}
 		return
 	})
