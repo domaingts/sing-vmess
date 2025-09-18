@@ -85,39 +85,44 @@ type Addons struct {
 
 // func readAddons(reader varbin.Reader) (*Addons, error) {
 func readAddons(reader *bytes.Reader) (*Addons, error) {
-	var addons Addons
-	for reader.Len() > 0 {
-		protoHeader, err := reader.ReadByte()
-		if err != nil {
-			return nil, err
-		}
-		switch protoHeader {
-		case (1 << 3) | 2:
-			flowLen, err := binary.ReadUvarint(reader)
-			if err != nil {
-				return nil, err
-			}
-			flowBytes := make([]byte, flowLen)
-			_, err = io.ReadFull(reader, flowBytes)
-			if err != nil {
-				return nil, err
-			}
-			addons.Flow = string(flowBytes)
-		case (2 << 3) | 2:
-			seedLen, err := binary.ReadUvarint(reader)
-			if err != nil {
-				return nil, err
-			}
-			seedBytes := make([]byte, seedLen)
-			_, err = io.ReadFull(reader, seedBytes)
-			if err != nil {
-				return nil, err
-			}
-			addons.Seed = string(seedBytes)
-		default:
-			return nil, E.New("unknown protobuf message header: ", protoHeader)
-		}
+	protoHeader, err := reader.ReadByte()
+	if err != nil {
+		return nil, err
 	}
+	if protoHeader != 10 {
+		return nil, E.New("unknown protobuf message header: ", protoHeader)
+	}
+
+	var addons Addons
+
+	flowLen, err := binary.ReadUvarint(reader)
+	if err != nil {
+		if err == io.EOF {
+			return &addons, nil
+		}
+		return nil, err
+	}
+	flowBytes := make([]byte, flowLen)
+	_, err = io.ReadFull(reader, flowBytes)
+	if err != nil {
+		return nil, err
+	}
+	addons.Flow = string(flowBytes)
+
+	seedLen, err := binary.ReadUvarint(reader)
+	if err != nil {
+		if err == io.EOF {
+			return &addons, nil
+		}
+		return nil, err
+	}
+	seedBytes := make([]byte, seedLen)
+	_, err = io.ReadFull(reader, seedBytes)
+	if err != nil {
+		return nil, err
+	}
+	addons.Seed = string(seedBytes)
+
 	return &addons, nil
 }
 

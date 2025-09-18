@@ -32,15 +32,9 @@ func reshapeBuffer(b []byte) []*buf.Buffer {
 	if len(b) < bufferLimit {
 		return []*buf.Buffer{buf.As(b)}
 	}
-	var buffers []*buf.Buffer
-	for len(b) >= bufferLimit {
-		index := int32(bytes.LastIndex(b, tlsApplicationDataStart))
-		if index < 32 || index > bufferLimit {
-			index = 8192 / 2
-		}
-		buffers = append(buffers, buf.As(b[:index]))
-		b = b[index:]
+	index := int32(bytes.LastIndex(b, tlsApplicationDataStart))
+	if index <= 0 {
+		index = 8192 / 2
 	}
-	buffers = append(buffers, buf.As(b))
-	return buffers
+	return []*buf.Buffer{buf.As(b[:index]), buf.As(b[index:])}
 }

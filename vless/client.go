@@ -88,10 +88,7 @@ func (c *Client) DialEarlyXUDPPacketConn(conn net.Conn, destination M.Socksaddr)
 	return vmess.NewXUDPConn(protocolConn, destination), common.Error(remoteConn.Write(nil))
 }
 
-var (
-	_ N.EarlyReader = (*Conn)(nil)
-	_ N.EarlyWriter = (*Conn)(nil)
-)
+var _ N.EarlyConn = (*Conn)(nil)
 
 type Conn struct {
 	N.ExtendedConn
@@ -165,11 +162,7 @@ func (c *Conn) WriterReplaceable() bool {
 	return c.requestWritten
 }
 
-func (c *Conn) NeedHandshakeForRead() bool {
-	return !c.responseRead
-}
-
-func (c *Conn) NeedHandshakeForWrite() bool {
+func (c *Conn) NeedHandshake() bool {
 	return !c.requestWritten
 }
 
