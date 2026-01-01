@@ -20,15 +20,23 @@ import (
 	N "github.com/sagernet/sing/common/network"
 )
 
-var tlsRegistry []func(conn net.Conn) (loaded bool, netConn net.Conn, reflectType reflect.Type, reflectPointer uintptr)
+var tlsRegistry []func(conn net.Conn) (loaded bool, netConn net.Conn, offsets offsets, reflectPointer unsafe.Pointer)
+
+type offsets func() (uintptr, uintptr)
 
 func init() {
-	tlsRegistry = append(tlsRegistry, func(conn net.Conn) (loaded bool, netConn net.Conn, reflectType reflect.Type, reflectPointer uintptr) {
+	tlsOffsets := sync.OnceValues(func() (uintptr, uintptr) {
+		t := reflect.TypeFor[*tls.Conn]().Elem()
+		input, _ := t.FieldByName("input")
+		rawInput, _ := t.FieldByName("rawInput")
+		return input.Offset, rawInput.Offset
+	})
+	tlsRegistry = append(tlsRegistry, func(conn net.Conn) (loaded bool, netConn net.Conn, offsets offsets, reflectPointer unsafe.Pointer) {
 		tlsConn, loaded := N.CastReader[*tls.Conn](conn)
 		if !loaded {
 			return
 		}
-		return true, tlsConn.NetConn(), reflect.TypeOf(tlsConn).Elem(), uintptr(unsafe.Pointer(tlsConn))
+		return true, tlsConn.NetConn(), tlsOffsets, unsafe.Pointer(tlsConn)
 	})
 }
 
@@ -65,12 +73,12 @@ type VisionConn struct {
 func NewVisionConn(conn net.Conn, tlsConn net.Conn, userUUID [16]byte, logger logger.Logger) (*VisionConn, error) {
 	var (
 		loaded         bool
-		reflectType    reflect.Type
-		reflectPointer uintptr
+		reflectOffsets offsets
+		reflectPointer unsafe.Pointer
 		netConn        net.Conn
 	)
 	for _, tlsCreator := range tlsRegistry {
-		loaded, netConn, reflectType, reflectPointer = tlsCreator(tlsConn)
+		loaded, netConn, reflectOffsets, reflectPointer = tlsCreator(tlsConn)
 		if loaded {
 			break
 		}
@@ -78,14 +86,13 @@ func NewVisionConn(conn net.Conn, tlsConn net.Conn, userUUID [16]byte, logger lo
 	if !loaded {
 		return nil, E.New("vision: not a valid supported TLS connection: ", reflect.TypeOf(tlsConn))
 	}
-	input, _ := reflectType.FieldByName("input")
-	rawInput, _ := reflectType.FieldByName("rawInput")
+	input, rawInput := reflectOffsets()
 	return &VisionConn{
 		Conn:     conn,
 		reader:   bufio.NewChunkReader(conn, xrayChunkSize),
 		writer:   bufio.NewVectorisedWriter(conn),
-		input:    (*bytes.Reader)(unsafe.Pointer(reflectPointer + input.Offset)),
-		rawInput: (*bytes.Buffer)(unsafe.Pointer(reflectPointer + rawInput.Offset)),
+		input:    (*bytes.Reader)(unsafe.Add(reflectPointer, input)),
+		rawInput: (*bytes.Buffer)(unsafe.Add(reflectPointer, rawInput)),
 		netConn:  netConn,
 		logger:   logger,
 
@@ -138,11 +145,12 @@ func (c *VisionConn) Read(p []byte) (n int, err error) {
 			chunkBuffer.Reset()
 		}
 		if c.remainingContent == 0 && c.remainingPadding == 0 {
-			if c.currentCommand == commandPaddingEnd {
+			switch c.currentCommand {
+			case commandPaddingEnd:
 				c.withinPaddingBuffers = false
 				c.remainingContent = -1
 				c.remainingPadding = -1
-			} else if c.currentCommand == commandPaddingDirect {
+			case commandPaddingDirect:
 				c.withinPaddingBuffers = false
 				c.directRead = true
 
@@ -160,9 +168,9 @@ func (c *VisionConn) Read(p []byte) (n int, err error) {
 				buffers = append(buffers, buf.As(rawInputBuffer))
 
 				c.logger.Trace("XtlsRead readV")
-			} else if c.currentCommand == commandPaddingContinue {
+			case commandPaddingContinue:
 				c.withinPaddingBuffers = true
-			} else {
+			default:
 				return 0, E.New("unknown command ", c.currentCommand)
 			}
 		} else if c.remainingContent > 0 || c.remainingPadding > 0 {

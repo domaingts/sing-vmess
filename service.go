@@ -149,10 +149,7 @@ func (s *Service[U]) generateLegacyKeys() {
 	userAlterIdUpdateTime := make(map[U]int64)
 
 	for user, alterIds := range s.alterIds {
-		beginSec := s.alterIdUpdateTime[user]
-		if beginSec < nowSec-CacheDurationSeconds {
-			beginSec = nowSec - CacheDurationSeconds
-		}
+		beginSec := max(s.alterIdUpdateTime[user], nowSec-CacheDurationSeconds)
 		for i, alterId := range alterIds {
 			idHash := hmac.New(md5.New, alterId[:])
 			for ts := beginSec; ts <= endSec; ts++ {
